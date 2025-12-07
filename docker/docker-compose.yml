@@ -1,33 +1,65 @@
+# docker-compose.yml - 3-Service Setup
 version: '3.8'
 
 services:
-  sentiment-app:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: sentiment-analysis-app
+  # Service 1: ML Application (Your sentiment analysis app)
+  ml-app:
+    build: .
+    container_name: sentiment-ml-app
     ports:
-      - "7860:7860"
+      - "7860:7860"  # Gradio UI port
     volumes:
-      - ../src:/app/src
-      - ./data:/app/data  # For persistent vector store
+      - ./src:/app/src  # Mount source code for development
+      - faiss-data:/app/faiss_data  # Persistent FAISS storage
     environment:
       - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=  # Disable GPU
     restart: unless-stopped
-    command: python src/app.py
+    networks:
+      - sentiment-network
 
-  # Optional: Add Redis for caching if needed
-  # redis:
-  #   image: redis:alpine
-  #   container_name: sentiment-redis
-  #   ports:
-  #     - "6379:6379"
+  # Service 2: Vector Database (Redis for metadata + cache)
+  vector-db:
+    image: redis:7-alpine
+    container_name: sentiment-vector-db
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - sentiment-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Optional: Add monitoring with Prometheus/Grafana
-  # prometheus:
-  #   image: prom/prometheus:latest
-  #   container_name: prometheus
-  #   volumes:
-  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
-  #   ports:
-  #     - "9090:9090"
+  # Service 3: Monitoring Dashboard (Optional but completes 3-service requirement)
+  monitoring:
+    image: grafana/grafana:latest
+    container_name: sentiment-monitoring
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    restart: unless-stopped
+    networks:
+      - sentiment-network
+
+# Networks
+networks:
+  sentiment-network:
+    driver: bridge
+
+# Volumes for persistent data
+volumes:
+  faiss-data:
+    driver: local
+  redis-data:
+    driver: local
+  grafana-data:
+    driver: local
