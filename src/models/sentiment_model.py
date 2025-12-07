@@ -10,23 +10,20 @@ class SentimentAnalyzer:
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Force CPU usage to avoid GPU compatibility issues
+        self.device = torch.device("cpu")
         self.model.to(self.device)
+        self.model.eval()  
         
         # Create pipeline for easy inference
         self.classifier = pipeline(
             "sentiment-analysis", 
-            model=self.model, 
-            tokenizer=self.tokenizer,
-            device=0 if torch.cuda.is_available() else -1
+            model=self.model_name, 
+            device=-1  # -1 means CPU
         )
         
-        # For embeddings (optional - if you want to store sentiment embeddings)
-        self.embedding_model = pipeline(
-            "feature-extraction",
-            model=self.model,
-            tokenizer=self.tokenizer
-        )
+        print(f"✅ Model loaded on {self.device}")
     
     def predict(self, text):
         """Predict sentiment and return label with confidence score"""
@@ -38,9 +35,25 @@ class SentimentAnalyzer:
         }
     
     def get_embedding(self, text):
-        """Get embedding vector for the text"""
-        embedding = self.embedding_model(text, return_tensors="pt")
-        return embedding[0][0].mean(dim=0).detach().numpy()
+        """Get embedding vector for the text - returns 2D array [1, 768]"""
+        # Tokenize the text
+        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        
+        with torch.no_grad():
+
+            outputs = self.model(**inputs, output_hidden_states=True)
+
+            last_hidden_state = outputs.hidden_states[-1]
+            
+            # Use the [CLS] token embedding (first token)
+            # Shape: [batch_size, hidden_size] -> [1, 768]
+            cls_embedding = last_hidden_state[:, 0, :]
+            
+            # Convert to numpy
+            embedding_np = cls_embedding.cpu().numpy()
+            
+        print(f"🔧 Embedding shape: {embedding_np.shape}")
+        return embedding_np
     
     def batch_predict(self, texts):
         """Predict sentiment for multiple texts"""
