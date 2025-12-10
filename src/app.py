@@ -1,6 +1,19 @@
+# app.py - Fixed version
 import gradio as gr
+from fastapi import FastAPI
+import uvicorn
 import numpy as np
 import os
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.append(str(Path(__file__).parent.parent))
+
+# Create FastAPI app
+api_app = FastAPI(title="Sentiment Analysis API")
+
+# Your existing initialization code...
 from models.sentiment_model import SentimentAnalyzer
 from models.vector_store import SentimentVectorStore
 from preprocessing.text_processor import TextPreprocessor
@@ -58,8 +71,56 @@ def initialize_vector_store():
     
     return f"✅ Vector store initialized with {len(sample_texts)} texts"
 
+# API Endpoints
+@api_app.get("/")
+def read_root():
+    return {"message": "Sentiment Analysis API is running", "docs": "/docs", "ui": "/gradio"}
+
+@api_app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "service": "sentiment-analysis",
+        "version": "1.0.0",
+        "model_loaded": True,
+        "vector_store_initialized": len(vector_store.texts) > 0 if hasattr(vector_store, 'texts') else False
+    }
+
+@api_app.get("/api/sentiment")
+def analyze_sentiment_api(text: str = "This is a test"):
+    """API endpoint for sentiment analysis"""
+    if not text.strip():
+        return {"error": "Please provide text"}
+    
+    # Preprocess text
+    processed_text = preprocessor.preprocess(text)
+    
+    # Get sentiment prediction
+    result = sentiment_analyzer.predict(text)
+    
+    # Get embedding and search for similar texts
+    embedding = sentiment_analyzer.get_embedding(text)
+    similar_texts = vector_store.search(embedding, k=3)
+    
+    return {
+        "input_text": text,
+        "processed_text": processed_text,
+        "sentiment": result,
+        "similar_texts": similar_texts[:3]  # Limit to 3
+    }
+
+@api_app.get("/api/system-info")
+def system_info():
+    """Get system information"""
+    return {
+        "model_loaded": True,
+        "vector_store_size": len(vector_store.texts) if hasattr(vector_store, 'texts') else 0,
+        "components": ["sentiment_analyzer", "vector_store", "text_preprocessor"],
+        "sample_texts_count": len(sample_texts)
+    }
+
 def analyze_sentiment(text):
-    """Analyze sentiment of input text"""
+    """Analyze sentiment of input text - for Gradio UI"""
     if not text.strip():
         return "Please enter some text", "", []
     
@@ -102,15 +163,7 @@ def analyze_sentiment(text):
     
     return processed_text, sentiment_html, similar_formatted
 
-# Initialize vector store
-print("=" * 50)
-print("🚀 Starting Sentiment Analysis Application")
-print("=" * 50)
-
-init_message = initialize_vector_store()
-print(init_message)
-
-# FIXED: Correct theme syntax
+# Create Gradio interface - FIXED THEME SYNTAX
 with gr.Blocks(title="Sentiment Analysis with FAISS Vector Store") as demo:
     gr.Markdown("# 🎯 Sentiment Analysis System")
     gr.Markdown("Analyze text sentiment and find similar texts using FAISS vector database")
@@ -128,7 +181,7 @@ with gr.Blocks(title="Sentiment Analysis with FAISS Vector Store") as demo:
             gr.Markdown("### 📊 System Status")
             status = gr.Textbox(
                 label="Vector Store Status",
-                value=init_message,
+                value="✅ System initialized",
                 interactive=False
             )
             clear_btn = gr.Button("🔄 Clear All", variant="secondary")
@@ -185,15 +238,32 @@ with gr.Blocks(title="Sentiment Analysis with FAISS Vector Store") as demo:
         outputs=[input_text, processed_output, similar_output]
     )
 
+# Mount Gradio app to FastAPI
+try:
+    # For newer Gradio versions
+    app = gr.mount_gradio_app(api_app, demo, path="/gradio")
+except AttributeError:
+    # Fallback for older versions
+    from fastapi.middleware.cors import CORSMiddleware
+    from gradio.routes import mount_gradio_app
+    app = mount_gradio_app(api_app, demo, path="/gradio")
+
 if __name__ == "__main__":
+    # Initialize vector store
+    print("=" * 50)
+    print("🚀 Starting Sentiment Analysis Application")
+    print("=" * 50)
+    
+    init_message = initialize_vector_store()
+    print(init_message)
+    
     print("\n" + "=" * 50)
-    print("🌐 Starting Gradio interface...")
-    print("📱 Open http://localhost:7860 in your browser")
+    print("🌐 Starting servers...")
+    print("📚 API Documentation: http://localhost:7860/docs")
+    print("📊 API Base: http://localhost:7860/")
+    print("📱 Web UI: http://localhost:7860/gradio")
+    print("🏥 Health Check: http://localhost:7860/health")
+    print("🔧 System Info: http://localhost:7860/api/system-info")
     print("=" * 50 + "\n")
     
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
-        debug=False
-    )
+    uvicorn.run(app, host="0.0.0.0", port=7860)
