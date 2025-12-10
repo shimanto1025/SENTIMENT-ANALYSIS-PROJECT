@@ -1,4 +1,3 @@
-# app.py - Fixed version
 import gradio as gr
 from fastapi import FastAPI
 import uvicorn
@@ -6,18 +5,16 @@ import numpy as np
 import os
 import sys
 from pathlib import Path
+from models.sentiment_model import SentimentAnalyzer
+from models.vector_store import SentimentVectorStore
+from preprocessing.text_processor import TextPreprocessor
+import json
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 # Create FastAPI app
-api_app = FastAPI(title="Sentiment Analysis API")
-
-# Your existing initialization code...
-from models.sentiment_model import SentimentAnalyzer
-from models.vector_store import SentimentVectorStore
-from preprocessing.text_processor import TextPreprocessor
-import json
+api_app = FastAPI(title="Sentiment Analysis Backend API")
 
 # Disable GPU to avoid compatibility issues
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
@@ -106,7 +103,7 @@ def analyze_sentiment_api(text: str = "This is a test"):
         "input_text": text,
         "processed_text": processed_text,
         "sentiment": result,
-        "similar_texts": similar_texts[:3]  # Limit to 3
+        "similar_texts": similar_texts[:5] 
     }
 
 @api_app.get("/api/system-info")
@@ -212,6 +209,7 @@ with gr.Blocks(title="Sentiment Analysis with FAISS Vector Store") as demo:
     examples = gr.Examples(
         examples=[
             ["I'm really happy with the service!"],
+            ["I am worried about the exam!"]
             ["This product is terrible and broke immediately."],
             ["The movie was average, not too good nor bad."],
             ["Exceptional quality and fast delivery!"],
@@ -227,6 +225,7 @@ with gr.Blocks(title="Sentiment Analysis with FAISS Vector Store") as demo:
         inputs=[input_text],
         outputs=[processed_output, sentiment_output, similar_output]
     )
+    
     
     # Clear button action
     def clear_all():

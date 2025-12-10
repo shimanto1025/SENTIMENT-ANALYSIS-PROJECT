@@ -19,5 +19,5 @@ class Config:
     # FAISS Configuration
     FAISS_INDEX_TYPE = "FlatL2"
     
-    # Hugging Face Token (if using gated models)
+    # Hugging Face Token
     HF_TOKEN = os.getenv("HF_TOKEN", "")
