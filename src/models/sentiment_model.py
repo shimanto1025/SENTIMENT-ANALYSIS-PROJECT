@@ -1,60 +1,69 @@
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+import os
 import torch
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+
 
 class SentimentAnalyzer:
     def __init__(self, model_name="distilbert-base-uncased-finetuned-sst-2-english"):
         """
-        Initialize sentiment analysis model
-        Using DistilBERT fine-tuned on SST-2 (Stanford Sentiment Treebank)
+        Initialize Sentiment Analyzer with HuggingFace model
+        Works offline and inside Chinese networks using hf-mirror.com
         """
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+        os.environ["HF_HOME"] = "/app/hf_cache"
+        os.environ["TRANSFORMERS_CACHE"] = "/app/hf_cache"
+        os.environ["TORCH_HOME"] = "/app/hf_cache"
+
         self.model_name = model_name
+
+        # Load tokenizer + model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        
-        # Force CPU usage to avoid GPU compatibility issues
+
+        # CPU only (safe for docker)
         self.device = torch.device("cpu")
         self.model.to(self.device)
-        self.model.eval()  
-        
-        # Create pipeline for easy inference
+        self.model.eval()
+
+        # Pipeline for inference
         self.classifier = pipeline(
-            "sentiment-analysis", 
-            model=self.model_name, 
-            device=-1  # -1 means CPU
+            task="sentiment-analysis",
+            model=model_name,
+            device=-1
         )
-        
-        print(f"✅ Model loaded on {self.device}")
-    
+
+        print(f"✔ Sentiment model loaded using China mirror on {self.device}")
+
     def predict(self, text):
-        """Predict sentiment and return label with confidence score"""
-        result = self.classifier(text)[0]
+        """Predict sentiment and return structured output"""
+        prediction = self.classifier(text)[0]
         return {
-            'label': result['label'],
-            'score': round(result['score'], 4),
-            'sentiment': 'positive' if result['label'] == 'POSITIVE' else 'negative'
+            "label": prediction["label"],
+            "score": round(prediction["score"], 4),
+            "sentiment": "positive" if prediction["label"].upper() == "POSITIVE" else "negative"
         }
-    
+
     def get_embedding(self, text):
-        """Get embedding vector for the text - returns 2D array [1, 768]"""
-        # Tokenize the text
-        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        
+        """Return 768-dim embedding using [CLS] token"""
+        inputs = self.tokenizer(
+            text,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512
+        )
+
         with torch.no_grad():
-
             outputs = self.model(**inputs, output_hidden_states=True)
-
             last_hidden_state = outputs.hidden_states[-1]
-            
-            # Use the [CLS] token embedding (first token)
-            # Shape: [batch_size, hidden_size] -> [1, 768]
-            cls_embedding = last_hidden_state[:, 0, :]
-            
-            # Convert to numpy
+            cls_embedding = last_hidden_state[:, 0, :]  # first token
+
             embedding_np = cls_embedding.cpu().numpy()
-            
-        print(f"🔧 Embedding shape: {embedding_np.shape}")
+
+        print(f"Embedding shape: {embedding_np.shape}")
         return embedding_np
-    
+
     def batch_predict(self, texts):
-        """Predict sentiment for multiple texts"""
+        """Predict multiple sentences"""
         return self.classifier(texts)
+
