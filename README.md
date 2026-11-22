@@ -40,6 +40,6 @@ Dual Interface - Gradio web UI + FastAPI REST API
 Containerized Deployment - Docker for reproducibility
 
 
-# created by KAZI SHIMANTO HAQUE 
+contact : kazishimant069@gmail.com
 
 
